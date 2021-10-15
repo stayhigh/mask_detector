@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import cv2
 import numpy as np
 import tensorflow as tf
@@ -54,6 +55,7 @@ def main():
 
     cap = cv2.VideoCapture(SOURCE)
 
+    have_mask = False
     while True:
         ret, frame = cap.read()
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -73,10 +75,8 @@ def main():
                     mask_result = mask_model.predict(np.expand_dims(face_img, axis=0))[0]
                     have_mask = np.argmax(mask_result)
                 except:
-                    have_mask = False
+                    print ('err_on_predict')
 
-            #frame = draw_bbox(frame, start_x, start_y, end_x, end_y, have_mask=False)
-            #frame = draw_bbox(frame, start_x, start_y, end_x, end_y, have_mask=True)
             frame = draw_bbox(frame, start_x, start_y, end_x, end_y, have_mask)
 
         frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
