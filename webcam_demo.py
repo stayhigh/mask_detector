@@ -55,7 +55,7 @@ def main():
 
     cap = cv2.VideoCapture(SOURCE)
 
-    have_mask = False
+    have_mask = False # here
     while True:
         ret, frame = cap.read()
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
