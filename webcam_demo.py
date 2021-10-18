@@ -3,7 +3,7 @@ import cv2
 import numpy as np
 import tensorflow as tf
 from mtcnn import MTCNN
-import time
+from imutils.video import WebcamVideoStream  # threaded version
 
 MASK_MODEL_ENABLE = True
 
@@ -53,14 +53,17 @@ def main():
     if MASK_MODEL_ENABLE:
         mask_model = tf.keras.models.load_model(MODEL_PATH)
 
-    cap = cv2.VideoCapture(SOURCE)
+    # non-threaded source:    cap = cv2.VideoCapture(SOURCE)
+    vs = WebcamVideoStream(src=SOURCE).start()
+    cap = vs.stream
 
     have_mask = False # here
     while True:
         ret, frame = cap.read()
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        face_locs = face_detector.detect_faces(frame)
 
+        # face detector is too slow
+        face_locs = face_detector.detect_faces(frame)
         for face_loc in face_locs:
             bbox = face_loc['box']
             start_x = bbox[0]
@@ -80,7 +83,11 @@ def main():
             frame = draw_bbox(frame, start_x, start_y, end_x, end_y, have_mask)
 
         frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-        cv2.imshow('mask detector', frame)
+        window_name = 'mask detector'
+        cv2.imshow(window_name, frame)
+
+        # set the window on topmost
+        cv2.setWindowProperty(window_name, cv2.WND_PROP_TOPMOST, 1)
 
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
