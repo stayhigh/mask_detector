@@ -8,17 +8,22 @@ from imutils.video import WebcamVideoStream  # threaded version
 from imutils.video import FPS
 from line_profiler import LineProfiler
 import argparse
+import traceback
+import logging
 
+# set logger
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 # construct the argument parse and parse the arguments
 ap = argparse.ArgumentParser()
-ap.add_argument("-t", "--timeout", type=int, default=30,
+ap.add_argument("-t", "--timeout", type=int, default=60,
                 help="timeout (seconds)")
 ap.add_argument("-n", "--num-frames", type=int, default=float("inf"),
                 help="# of frames to loop over for FPS test")
 args = vars(ap.parse_args())
 
-MASK_MODEL_ENABLE = False
+MASK_MODEL_ENABLE = True
 
 SOURCE = 0  # or .mp4 file path
 INPUT_SIZE = (112, 112) 
@@ -62,77 +67,84 @@ def draw_bbox(frame, start_x, start_y, end_x, end_y, have_mask):
 
 # @profile
 def main():
-    face_detector = MTCNN()
-    if MASK_MODEL_ENABLE:
-        mask_model = tf.keras.models.load_model(MODEL_PATH)
+    try:
+        face_detector = MTCNN()
+        if MASK_MODEL_ENABLE:
+            mask_model = tf.keras.models.load_model(MODEL_PATH)
 
-    # non-threaded source:    cap = cv2.VideoCapture(SOURCE)
-    vs = WebcamVideoStream(src=SOURCE).start()
-    fps = FPS().start()
-    cap = vs.stream
+        # non-threaded source:    cap = cv2.VideoCapture(SOURCE)
+        vs = WebcamVideoStream(src=SOURCE).start()
+        fps = FPS().start()
+        cap = vs.stream
 
-    have_mask = False # here
+        have_mask = False # here
 
-    while fps._numFrames < args["num_frames"]:
-        print('num of frames: {}'.format(fps._numFrames))
-        if getattr(fps, '_end') and fps.elapsed() > args["timeout"]:
-            print("timeout {} seconds".format(args["timeout"]))
-            break
-        ret, frame = cap.read()
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        while fps._numFrames < args["num_frames"]:
+            fps.stop()
+            # if getattr(fps, '_end') and fps.elapsed() > args["timeout"]:
+            if fps.elapsed() > args["timeout"]:
+                print("timeout {} seconds".format(args["timeout"]))
+                break
+            ret, frame = cap.read()
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-        # face detector is too slow
-        lprofiler.add_function(face_detector.detect_faces)
-        face_locs = face_detector.detect_faces(frame)
+            # face detector is too slow
+            lprofiler.add_function(face_detector.detect_faces)
+            face_locs = face_detector.detect_faces(frame)
 
-        for face_loc in face_locs:
-            bbox = face_loc['box']
-            start_x = bbox[0]
-            start_y = bbox[1]
-            end_x = bbox[0] + bbox[2]
-            end_y = bbox[1] + bbox[3]
+            for face_loc in face_locs:
+                bbox = face_loc['box']
+                start_x = bbox[0]
+                start_y = bbox[1]
+                end_x = bbox[0] + bbox[2]
+                end_y = bbox[1] + bbox[3]
 
-            face_img = crop_img(end_x, end_y, frame, start_x, start_y)
+                face_img = crop_img(end_x, end_y, frame, start_x, start_y)
 
-            if MASK_MODEL_ENABLE:
-                try:
-                    mask_result = mask_model.predict(np.expand_dims(face_img, axis=0))[0]
-                    have_mask = np.argmax(mask_result)
-                except:
-                    print ('err_on_predict')
+                if MASK_MODEL_ENABLE:
+                    try:
+                        lprofiler.add_function(mask_model.predict)
+                        mask_result = mask_model.predict(np.expand_dims(face_img, axis=0))[0]
+                        have_mask = np.argmax(mask_result)
+                    except:
+                        print ('err_on_predict')
 
-            frame = draw_bbox(frame, start_x, start_y, end_x, end_y, have_mask)
+                frame = draw_bbox(frame, start_x, start_y, end_x, end_y, have_mask)
 
-        frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-        window_name = 'mask detector'
-        cv2.imshow(window_name, frame)
+            frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            window_name = 'mask detector'
+            cv2.imshow(window_name, frame)
 
-        # set the window on topmost
-        cv2.setWindowProperty(window_name, cv2.WND_PROP_TOPMOST, 1)
+            # set the window on topmost
+            cv2.setWindowProperty(window_name, cv2.WND_PROP_TOPMOST, 1)
 
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
 
-        fps.update()
+            fps.update()
+        # stop the timer and display FPS information
         fps.stop()
-
-    # stop the timer and display FPS information
-    fps.stop()
-    print("[INFO] elasped time: {:.2f}".format(fps.elapsed()))
-    print("[INFO] approx. FPS: {:.2f}".format(fps.fps()))
-
-    # do a bit of cleanup
-    cv2.destroyAllWindows()
-    vs.stop()
+        print("[INFO] elasped time: {:.2f}".format(fps.elapsed()))
+        print("[INFO] approx. FPS: {:.2f}".format(fps.fps()))
+        # do a bit of cleanup
+        cv2.destroyAllWindows()
+        vs.stop()
+    except Exception as e:
+        logger.exception(e)
+        logger.debug(traceback.format_exc())
+        traceback.print_exc()
 
 if __name__ == '__main__':
+    # add function to be profiled
     lprofiler = LineProfiler()
     lprofiler.add_function(main)
     lprofiler.add_function(crop_img)
     lprofiler.add_function(draw_bbox)
 
+    # set wrapper
     lp_wrapper = lprofiler(main)
     lp_wrapper()
+
+    # output profile file
     statfile = "{}.lprof".format(sys.argv[0])
     lprofiler.dump_stats(statfile)
-    # main()
