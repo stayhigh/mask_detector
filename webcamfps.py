@@ -1,13 +1,14 @@
 # import the necessary packages
 from __future__ import print_function
 
-
+import sys
 from imutils.video import WebcamVideoStream  # threaded version
 from imutils.video import FPS
 import argparse
 import imutils
 import cv2
 import datetime
+from line_profiler import LineProfiler
 
 
 # construct the argument parse and parse the arguments
@@ -22,17 +23,7 @@ ap.add_argument("--height", type=int, default=720,
                 help="the height of frames")
 args = vars(ap.parse_args())
 
-@profile
-def set_camera_resolution_for_normal_fps(camera, width=args['width'], height=args['height']):
-    print('setting video resolution:{:.0f}x{:.0f}'.format(width, height))
-    camera.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-    camera.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-    actual_video_width = camera.get(cv2.CAP_PROP_FRAME_WIDTH)
-    actual_video_height = camera.get(cv2.CAP_PROP_FRAME_HEIGHT)
-    print('actual video resolution:{:.0f}x{:.0f}'.format(actual_video_width, actual_video_height))
-    return camera
-
-@profile
+# @profile
 def check_normal_fps():
     print("[INFO] sampling frames from webcam...")
     stream = cv2.VideoCapture(0)
@@ -59,7 +50,17 @@ def check_normal_fps():
     cv2.destroyAllWindows()
     return fps.fps()
 
-@profile
+# @profile
+def set_camera_resolution_for_normal_fps(camera, width=args['width'], height=args['height']):
+    print('setting video resolution:{:.0f}x{:.0f}'.format(width, height))
+    camera.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+    camera.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+    actual_video_width = camera.get(cv2.CAP_PROP_FRAME_WIDTH)
+    actual_video_height = camera.get(cv2.CAP_PROP_FRAME_HEIGHT)
+    print('actual video resolution:{:.0f}x{:.0f}'.format(actual_video_width, actual_video_height))
+    return camera
+
+# @profile
 def check_threaded_fps():
     # created a *threaded* video stream, allow the camera sensor to warmup,
     # and start the FPS counter
@@ -87,8 +88,7 @@ def check_threaded_fps():
     vs.stop()
     return fps.fps()
 
-
-if __name__ == '__main__':
+def main():
     print('--check_normal_fps--')
     normal_fps = check_normal_fps()
 
@@ -96,3 +96,15 @@ if __name__ == '__main__':
     threaded_fps = check_threaded_fps()
 
     print("threaded fps is {:.3f} times faster than normal fps.".format(float(threaded_fps) / float(normal_fps)))
+
+if __name__ == '__main__':
+    # main()
+    lprofiler = LineProfiler()
+    lprofiler.add_function(check_normal_fps)
+    lprofiler.add_function(check_threaded_fps)
+    lprofiler.add_function(main)
+    lp_wrapper = lprofiler(main)
+    lp_wrapper()
+    statfile = "{}.lprof".format(sys.argv[0])
+    lprofiler.dump_stats(statfile)
+    # lprofiler.print_stats()
