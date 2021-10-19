@@ -1,5 +1,7 @@
 # import the necessary packages
 from __future__ import print_function
+
+
 from imutils.video import WebcamVideoStream  # threaded version
 from imutils.video import FPS
 import argparse
@@ -20,7 +22,7 @@ ap.add_argument("--height", type=int, default=720,
                 help="the height of frames")
 args = vars(ap.parse_args())
 
-
+@profile
 def set_camera_resolution_for_normal_fps(camera, width=args['width'], height=args['height']):
     print('setting video resolution:{:.0f}x{:.0f}'.format(width, height))
     camera.set(cv2.CAP_PROP_FRAME_WIDTH, width)
@@ -30,7 +32,7 @@ def set_camera_resolution_for_normal_fps(camera, width=args['width'], height=arg
     print('actual video resolution:{:.0f}x{:.0f}'.format(actual_video_width, actual_video_height))
     return camera
 
-
+@profile
 def check_normal_fps():
     print("[INFO] sampling frames from webcam...")
     stream = cv2.VideoCapture(0)
@@ -57,7 +59,7 @@ def check_normal_fps():
     cv2.destroyAllWindows()
     return fps.fps()
 
-
+@profile
 def check_threaded_fps():
     # created a *threaded* video stream, allow the camera sensor to warmup,
     # and start the FPS counter
