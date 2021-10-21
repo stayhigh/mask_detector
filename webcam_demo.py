@@ -1,4 +1,13 @@
 #!/usr/bin/env python3
+"""
+fps info:
+INFO:__mp_main__:[get_frame_queue] approx. FPS/elasped_time/#frames: 12.24/67.32/824
+INFO:__mp_main__:[push_frame_queue] approx. FPS/elasped_time/#frames: 12.46/66.30/826
+sw_ver
+ProductName:	Mac OS X
+ProductVersion:	10.13.6
+BuildVersion:	17G2112
+"""
 import sys
 import cv2
 import numpy as np
@@ -10,12 +19,10 @@ from line_profiler import LineProfiler
 import argparse
 import traceback
 import logging
-from threading import Thread
 import multiprocessing
 import multiprocessing.queues
 from queue import Empty
 import time
-import concurrent.futures
 
 try:
     from mtcnn_cv2 import MTCNN
@@ -38,6 +45,8 @@ ap.add_argument("-n", "--num-frames", type=int, default=float("inf"),
                 help="# of frames to loop over for FPS test")
 ap.add_argument("-p", "--procs", type=int, default=-1,
 		help="# of processes to spin up")
+ap.add_argument("-test", "--test", type=int, default=0,
+		help="test mode:1, normal:0")
 args = vars(ap.parse_args())
 
 # check cpu counts
@@ -187,18 +196,6 @@ def get_frame_queue(input_queue):
     # do a bit of cleanup
     cv2.destroyAllWindows()
 
-#
-# def test3():
-#     from webcamfps import check_threaded_fps
-#     logger.info("FPS test: dry run")
-#     test_p = multiprocessing.Process(name='TestProcess', target=check_threaded_fps, daemon=True)
-#     test_p.start()
-#     test_p.join()
-#
-# def test2():
-#     from webcamfps import check_threaded_fps
-#     check_threaded_fps()
-
 def test():
     # from webcamfps import check_threaded_fps_withqueue
     logger.info("FPS test: test() run")
@@ -241,7 +238,7 @@ mask_model = tf.keras.models.load_model(MODEL_PATH)
 logger.info("loaded mask_model: keras model")
 
 if __name__ == '__main__':
-    if False:
+    if args['test'] > 0: # test_branch
         # add function to be profiled
         lprofiler = LineProfiler()
         lprofiler.add_function(test)
