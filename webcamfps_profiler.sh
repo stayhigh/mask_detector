@@ -8,7 +8,7 @@ source $CONDA_PATH/etc/profile.d/conda.sh
 conda activate mask_check
 
 # profile the script
-python webcamfps.py
+python webcamfps.py --display 1  -n 100
 
 # run kernprof if you want to use decorator @profile
 # kernprof -l -v webcamfps.py
