@@ -3,7 +3,6 @@ import sys
 import cv2
 import numpy as np
 import tensorflow as tf
-from mtcnn import MTCNN
 from imutils.video import WebcamVideoStream  # threaded version
 from imutils.video import FPS
 import imutils
@@ -12,22 +11,28 @@ import argparse
 import traceback
 import logging
 from threading import Thread
-from queue import Queue
 import multiprocessing
 import multiprocessing.queues
+from queue import Empty
 import time
 import concurrent.futures
 
+try:
+    from mtcnn_cv2 import MTCNN
+except:
+    print("slow version MTCNN imported")
+    from mtcnn import MTCNN  # too much slow
 
 # set logger
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
+
 # construct the argument parse and parse the arguments
 ap = argparse.ArgumentParser()
 ap.add_argument("-d", "--display", type=int, default=1,
                 help="Whether or not frames should be displayed")
-ap.add_argument("-t", "--timeout", type=int, default=90,
+ap.add_argument("-t", "--timeout", type=int, default=float("inf"),
                 help="timeout (seconds)")
 ap.add_argument("-n", "--num-frames", type=int, default=float("inf"),
                 help="# of frames to loop over for FPS test")
@@ -41,8 +46,8 @@ procIDs = list(range(0, procs))
 logging.info(f"procIDs:{str(procIDs)}")
 
 # MODEL
-MASK_MODEL_ENABLE = False
-FACE_MODEL_ENABLE = False
+MASK_MODEL_ENABLE = True
+FACE_MODEL_ENABLE = True
 
 SOURCE = 0  # or .mp4 file path
 INPUT_SIZE = (112, 112) 
@@ -56,6 +61,8 @@ def crop_img(end_x, end_y, frame, start_x, start_y):
     # print ("face_img:", face_img)
     try:
         face_img = cv2.resize(face_img, INPUT_SIZE)
+        # width, height = INPUT_SIZE
+        # face_img = imutils.resize(face_img, width=width, height=height)
     except cv2.error as e:
         pass
     face_img = face_img - 127.5
@@ -99,15 +106,19 @@ def push_frame_queue(q):
             break
         # ret, frame = cap.read() # too slow, but it support different frame objects
         frame = vs.read()
-        # frame = imutils.resize(frame, width=400)
-        q.put(frame)
+        frame = imutils.resize(frame, width=400) # resize for speed-up
 
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
+        # time costly
+        # if cv2.waitKey(1) & 0xFF == ord('q'):
+        #     break
+
         # update the FPS counter
         fps.update()
+        q.put(frame)
+        # stop the timer and display FPfS information
         fps.stop()
-        logger.info("[push_frame_queue] approx. elasped_time/FPS: {:.2f}/{:.2f}".format(fps.elapsed(), fps.fps()))
+        # logger.info make it slow
+        logger.info("[push_frame_queue] approx. FPS/elasped_time/#frames: {:.2f}/{:.2f}/{}".format(fps.fps(), fps.elapsed(), fps._numFrames))
     # do a bit of cleanup
     cv2.destroyAllWindows()
     vs.stop()
@@ -115,8 +126,18 @@ def push_frame_queue(q):
 
 def get_frame_queue(input_queue):
     logger.info(f"[get_frame_queue] running")
-    while True:
-        frame = input_queue.get()
+    fps = FPS().start()
+    fps.stop() # enable the _end attribute
+    while fps._numFrames < args["num_frames"]:
+        if fps.elapsed() > args["timeout"]:
+            logger.info("timeout {} seconds".format(args["timeout"]))
+            break
+
+        try:
+            frame = input_queue.get_nowait()
+        except Empty:
+            continue
+
         if FACE_MODEL_ENABLE:
             global face_detector
             face_locs = face_detector.detect_faces(frame)
@@ -147,19 +168,56 @@ def get_frame_queue(input_queue):
         cv2.imshow(window_name, frame)
         cv2.setWindowProperty(window_name, cv2.WND_PROP_TOPMOST, 1)
 
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
+        # enable display
+        key = cv2.waitKey(1) & 0xFF
+
+        # costly cv2.waitKey
+        # if cv2.waitKey(1) & 0xFF == ord('q'):
+        #     break
+
+        # update the FPS counter
+        fps.update()
+        fps.stop()
+        logger.info(
+            "[get_frame_queue] approx. FPS/elasped_time/#frames: {:.2f}/{:.2f}/{}".format(
+            fps.fps(),
+            fps.elapsed(),
+            fps._numFrames))
 
     # do a bit of cleanup
     cv2.destroyAllWindows()
 
+#
+# def test3():
+#     from webcamfps import check_threaded_fps
+#     logger.info("FPS test: dry run")
+#     test_p = multiprocessing.Process(name='TestProcess', target=check_threaded_fps, daemon=True)
+#     test_p.start()
+#     test_p.join()
+#
+# def test2():
+#     from webcamfps import check_threaded_fps
+#     check_threaded_fps()
 
-# global
-logger.info("load model (global)")
-face_detector = MTCNN()
-logger.info("loaded face_detector: MTCNN model")
-mask_model = tf.keras.models.load_model(MODEL_PATH)
-logger.info("loaded mask_model: keras model")
+def test():
+    # from webcamfps import check_threaded_fps_withqueue
+    logger.info("FPS test: test() run")
+    test_queue = multiprocessing.Queue(1)
+    test_p = multiprocessing.Process(name='TestProcess', target=push_frame_queue, args=(test_queue,), daemon=True)
+    test_p.start()
+    s = time.perf_counter()
+    while True:
+        try:
+            e = time.perf_counter()
+            time_diff = e - s
+            if time_diff > 10:
+                logger.info(f"time_diff {time_diff} break")
+                break
+            test_queue.get_nowait()
+            logger.info(f"time_diff {time_diff}")
+        except Empty:
+            pass
+
 
 def main():
     logger.info("Producer (Daemon): push frame into multiprocessing.Queue")
@@ -171,21 +229,42 @@ def main():
     get_p = multiprocessing.Process(name='ConsumerProcess', target=get_frame_queue, args=(pure_queue, ), daemon=True)
     get_p.start()
 
-    logger.info("join processes: Producer, Consumer, and Display")
+    logger.info("join processes: Producer, Consumer")
     push_p.join()
     get_p.join()
 
+# global
+logger.info("load model (global)")
+face_detector = MTCNN()
+logger.info("loaded face_detector: MTCNN model")
+mask_model = tf.keras.models.load_model(MODEL_PATH)
+logger.info("loaded mask_model: keras model")
+
 if __name__ == '__main__':
-    # add function to be profiled
-    lprofiler = LineProfiler()
-    lprofiler.add_function(main)
-    lprofiler.add_function(crop_img)
-    lprofiler.add_function(draw_bbox)
+    if False:
+        # add function to be profiled
+        lprofiler = LineProfiler()
+        lprofiler.add_function(test)
+        lprofiler.add_function(push_frame_queue)
 
-    # set wrapper
-    lp_wrapper = lprofiler(main)
-    lp_wrapper()
+        # set wrapper
+        lp_wrapper = lprofiler(test)
+        lp_wrapper()
 
-    # output profile file
-    statfile = "{}.lprof".format(sys.argv[0])
-    lprofiler.dump_stats(statfile)
+        # output profile file
+        statfile = "{}.test.lprof".format(sys.argv[0])
+        lprofiler.dump_stats(statfile)
+    else:
+        # add function to be profiled
+        lprofiler = LineProfiler()
+        lprofiler.add_function(main)
+        lprofiler.add_function(crop_img)
+        lprofiler.add_function(draw_bbox)
+
+        # set wrapper
+        lp_wrapper = lprofiler(main)
+        lp_wrapper()
+
+        # output profile file
+        statfile = "{}.lprof".format(sys.argv[0])
+        lprofiler.dump_stats(statfile)
