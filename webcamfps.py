@@ -7,7 +7,6 @@ from imutils.video import FPS
 import argparse
 import imutils
 import cv2
-import datetime
 from line_profiler import LineProfiler
 
 
