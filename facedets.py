@@ -83,6 +83,15 @@ def frame_save_as_jpg(frame, fps):
     cv2.imwrite(f"jpgs/{fps._numFrames}.jpg", resized_frame)
 
 
+def rotate_picture(image, width=400, height=400, angle=45, scale=1):
+    height, width = image.shape[:2]
+    center = (width / 2, height / 2)
+    # using cv2.getRotationMatrix2D() to get the rotation matrix
+    rotate_matrix = cv2.getRotationMatrix2D(center=center, angle=angle, scale=scale)
+    # rotate the image using cv2.warpAffine
+    rotated_image = cv2.warpAffine(src=image, M=rotate_matrix, dsize=(width, height))
+    return rotated_image
+
 def main():
     # capture frames from a camera
     # cap = cv2.VideoCapture(args.src)
@@ -90,7 +99,7 @@ def main():
     fps = FPS().start()
     fps.stop()
 
-    while cv2.waitKey(1) < 0 and fps._numFrames < 10:
+    while cv2.waitKey(1) < 0 and fps._numFrames < float("inf"):
         # reads frames from a camera (cv2.VideoCapture)
         # ret, img = cap.read()
         # hasFrame, frame = cap.read()
@@ -100,7 +109,8 @@ def main():
         frame = cap.read()
 
         # save frame for debugging
-        # frame_save_as_jpg(frame, fps)
+        # rotated_frame = rotate_picture(frame)
+        # frame_save_as_jpg(rotated_frame, fps)
 
         # convert to gray scale of each frames
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -133,6 +143,18 @@ def main():
         # YOLO v5 model
         frame, bboxes = getFaceBox(faceNet, frame)
 
+        # FPS info
+        logger.info("approx. FPS/elasped_time/#frames: {:.2f}/{:.2f}/{}".format(fps.fps(), fps.elapsed(), fps._numFrames))
+        fps_info_xpadding = 20
+        fps_info_ypadding = 20
+        cv2.putText(frame,
+                    f"FPS/elapsed time: {fps.fps():.4}/{fps.elapsed():.4}",
+                    (0+fps_info_xpadding, 0+fps_info_ypadding),
+                    fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+                    fontScale=0.8,
+                    color=(255, 0, 0),
+                    thickness=2)
+
         # Display an image in a window
         window_name = 'opencv face detection'
         cv2.imshow(window_name, frame)
@@ -149,8 +171,6 @@ def main():
         # stop() method updates the _end attribute
         fps.stop()
 
-        logger.info("approx. FPS/elasped_time/#frames: {:.2f}/{:.2f}/{}".format(fps.fps(), fps.elapsed(),
-                                                                                           fps._numFrames))
 
     # De-allocate any associated memory usage
     cv2.destroyAllWindows()
