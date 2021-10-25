@@ -9,11 +9,9 @@ import logging
 from mtcnn_cv2 import MTCNN
 from line_profiler import LineProfiler
 from imutils.video import WebcamVideoStream  # threaded version
+import imutils
+from imutils.video import FPS
 import logging
-
-
-
-
 
 # set logger
 logging.basicConfig(level=logging.DEBUG)
@@ -27,18 +25,6 @@ parser.add_argument('--w', action='store', default=320, nargs='?', help='Set vid
 parser.add_argument('--h', action='store', default=240, nargs='?', help='Set video height')
 parser.add_argument("--device", default="cpu", help="Device to inference on")
 args = parser.parse_args()
-
-
-
-# # slow yolo v5 torch model (TO BE CHECKED)
-# from models.experimental import attempt_load
-# import torch
-# def load_model(weights, device):
-#     model = attempt_load(weights, map_location=device)  # load FP32 model
-#     return model
-# weight_file = '/Users/johnwcwang/Desktop/codebase/yolov5-face/runs/train/exp5/weights/yolov5n-0.5.pt'
-# device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-# yolo_v5_model = load_model(weight_file, device)
 
 
 # load the required trained XML classifiers
@@ -66,7 +52,7 @@ elif args.device == "gpu":
     faceNet.setPreferableTarget(cv2.dnn.DNN_TARGET_CUDA)
     print("Using GPU device")
 
-def getFaceBox(net, frame, conf_threshold=0.7):
+def  getFaceBox(net, frame, conf_threshold=0.7):
     frameOpencvDnn = frame.copy()
     frameHeight = frameOpencvDnn.shape[0]
     frameWidth = frameOpencvDnn.shape[1]
@@ -89,61 +75,82 @@ def getFaceBox(net, frame, conf_threshold=0.7):
     return frameOpencvDnn, bboxes
 
 
+def frame_save_as_jpg(frame, fps):
+    resized_frame = imutils.resize(frame, width=400)
+    directory = os.path.join(os.path.dirname(__file__), './jpgs')
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+    cv2.imwrite(f"jpgs/{fps._numFrames}.jpg", resized_frame)
+
 
 def main():
     # capture frames from a camera
     # cap = cv2.VideoCapture(args.src)
     cap = WebcamVideoStream(src=args.src).start()
+    fps = FPS().start()
+    fps.stop()
 
-    while True:
-        # reads frames from a camera
+    while cv2.waitKey(1) < 0 and fps._numFrames < 10:
+        # reads frames from a camera (cv2.VideoCapture)
         # ret, img = cap.read()
+        # hasFrame, frame = cap.read()
+        # if not hasFrame:
+        #     cv2.waitKey()
+        #     break
         frame = cap.read()
+
+        # save frame for debugging
+        # frame_save_as_jpg(frame, fps)
 
         # convert to gray scale of each frames
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
         # Detects faces of different sizes in the input image
         haarcascades_detector_faces = haarcascades_detector.detectMultiScale(gray, 1.3, 5)
-        mtcnn_face_detector_faces = mtcnn_face_detector.detect_faces(frame)
+        mtcnn_face_detector_faces = mtcnn_face_detector.detect_faces(frame) # slower than haar and YOLO_V5
 
-        # haar_cascade
+        # haar_cascade model
         for haar in haarcascades_detector_faces:
             (x, y, w, h) = haar
             center = (int(x + w / 2), int(y + h / 2))
             radius = int(max(w, h) / 2)
             color = (255, 255, 0)
-            thickness = 2
+            thickness = 8
             cv2.circle(frame, center=center, radius=radius, color=color, thickness=thickness)
-            cv2.putText(frame, 'haar_cascade', org=(center[0] - radius, center[1] - radius), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=0.9, color=color, thickness=2)
+            cv2.putText(frame, 'HAAR_CASCADE ', org=(center[0] - radius, center[1] - radius), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=0.8, color=color, thickness=2)
             roi_gray = gray[y:y + h, x:x + w]
             roi_color = frame[y:y + h, x:x + w]
 
-        # mtcnn
+        # MTCNN model
         for face_loc in mtcnn_face_detector_faces:
             (x, y, w, h) = face_loc['box']
             color = (0, 255, 0)
             thickness = 2
-            cv2.rectangle(frame, (x, y), (x+w, y+h), color, 2)
-            cv2.putText(frame, 'mtcnn', (x, y - 10), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=0.9, color=color, thickness=thickness)
+            cv2.rectangle(frame, (x, y), (x + w, y + h), color, 8)
+            cv2.putText(frame, 'MTCNN', (x, y - 10), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=0.8, color=color,
+                        thickness=thickness)
 
-        # # for YOLO v5
-        frame, _ = getFaceBox(faceNet, frame)
-        # padding = 20
-        # for bbox in bboxes:
-        #     face = frame[max(0, bbox[1] - padding):min(bbox[3] + padding, frame.shape[0] - 1),
-        #            max(0, bbox[0] - padding):min(bbox[2] + padding, frame.shape[1] - 1)]
-        #     cv2.putText(frame, 'YOLO_V5', (bbox[0], bbox[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2, cv2.LINE_AA)
-        #
+        # YOLO v5 model
+        frame, bboxes = getFaceBox(faceNet, frame)
+
         # Display an image in a window
         window_name = 'opencv face detection'
         cv2.imshow(window_name, frame)
         cv2.setWindowProperty(window_name, cv2.WND_PROP_TOPMOST, 1)
         cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
 
-        # Wait for Esc key to stop
-        if cv2.waitKey(10) & 0xFF == 27:
-            break
+        # # Wait for Esc key to stop
+        # if cv2.waitKey(10) & 0xFF == 27:
+        #     break
+
+        # update the FPS counter
+        fps.update()
+
+        # stop() method updates the _end attribute
+        fps.stop()
+
+        logger.info("approx. FPS/elasped_time/#frames: {:.2f}/{:.2f}/{}".format(fps.fps(), fps.elapsed(),
+                                                                                           fps._numFrames))
 
     # De-allocate any associated memory usage
     cv2.destroyAllWindows()
