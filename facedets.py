@@ -38,6 +38,7 @@ args = parser.parse_args()
 # haarcascades, MTCNN, YOLOv5
 haarcascades_detector = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 mtcnn_face_detector = MTCNN()
+
 ## YOLOv5
 faceProto = "/Users/johnwcwang/Desktop/codebase/learnopencv/AgeGender/opencv_face_detector.pbtxt"
 faceModel = "/Users/johnwcwang/Desktop/codebase/learnopencv/AgeGender/opencv_face_detector_uint8.pb"
@@ -95,18 +96,36 @@ def rotate_picture(image, width=400, height=400, angle=45, scale=1):
 def main():
     # capture frames from a camera
     # cap = cv2.VideoCapture(args.src)
-    cap = WebcamVideoStream(src=args.src).start()
+
+    CAM_INDEX = args.src
+    cap = WebcamVideoStream(src=CAM_INDEX + cv2.CAP_ANY).start()
+    # cap = WebcamVideoStream(src=args.src).start()
     fps = FPS().start()
     fps.stop()
 
+    # check camera is opened or not.
+    if ((cap.stream == None) or (not cap.stream.isOpened())):
+        print('\n\n')
+        print('Error - could not open video device.')
+        print('\n\n')
+        exit(0)
+
     while cv2.waitKey(1) < 0 and fps._numFrames < float("inf"):
         # reads frames from a camera (cv2.VideoCapture)
-        # ret, img = cap.read()
         # hasFrame, frame = cap.read()
         # if not hasFrame:
         #     cv2.waitKey()
         #     break
+
         frame = cap.read()
+
+        # update the FPS counter
+        fps.update()
+
+        # check if the frame is empty
+        if frame is None:
+            logger.error(f"NO FRAME: frame type:{type(frame)}; frame repr: {repr(frame)}; _numFrames: {fps._numFrames}")
+            continue
 
         # save frame for debugging
         # rotated_frame = rotate_picture(frame)
@@ -119,7 +138,7 @@ def main():
         haarcascades_detector_faces = haarcascades_detector.detectMultiScale(gray, 1.3, 5)
         mtcnn_face_detector_faces = mtcnn_face_detector.detect_faces(frame) # slower than haar and YOLO_V5
 
-        # haar_cascade model
+        # # haar_cascade model
         for haar in haarcascades_detector_faces:
             (x, y, w, h) = haar
             center = (int(x + w / 2), int(y + h / 2))
@@ -164,9 +183,6 @@ def main():
         # # Wait for Esc key to stop
         # if cv2.waitKey(10) & 0xFF == 27:
         #     break
-
-        # update the FPS counter
-        fps.update()
 
         # stop() method updates the _end attribute
         fps.stop()
