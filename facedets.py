@@ -37,6 +37,7 @@ args = parser.parse_args()
 
 # haarcascades, MTCNN, YOLOv5
 haarcascades_detector = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+haarcascades_eye_detector = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_eye.xml') # https://raw.githubusercontent.com/opencv/opencv/master/data/haarcascades/haarcascade_eye.xml
 mtcnn_face_detector = MTCNN()
 
 ## YOLOv5
@@ -93,6 +94,43 @@ def rotate_picture(image, width=400, height=400, angle=45, scale=1):
     rotated_image = cv2.warpAffine(src=image, M=rotate_matrix, dsize=(width, height))
     return rotated_image
 
+def mtcnn_detect(mtcnn_face_detector, frame):
+    # MTCNN model
+    mtcnn_face_detector_faces = mtcnn_face_detector.detect_faces(frame)  # slower than haar and YOLO_V5
+    for face_loc in mtcnn_face_detector_faces:
+        (x, y, w, h) = face_loc['box']
+        color = (0, 255, 0)
+        thickness = 2
+        cv2.rectangle(frame, (x, y), (x + w, y + h), color, 8)
+        cv2.putText(frame, 'MTCNN', (x, y - 10), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=0.8, color=color,
+                    thickness=thickness)
+
+def haarcascades_detect(haarcascades_detector, frame, haarcascades_eye_detector=None):
+    # convert to gray scale of each frames
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+    # # Detects faces of different sizes in the input image
+    haarcascades_detector_faces = haarcascades_detector.detectMultiScale(gray, 1.3, 5)
+
+    # # haar_cascade model
+    for haar in haarcascades_detector_faces:
+        (x, y, w, h) = haar
+        center = (int(x + w / 2), int(y + h / 2))
+        radius = int(max(w, h) / 2)
+        color = (255, 255, 0)
+        thickness = 8
+        cv2.circle(frame, center=center, radius=radius, color=color, thickness=thickness)
+        cv2.putText(frame, 'HAAR_CASCADE ', org=(center[0] - radius, center[1] - radius),
+                    fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=0.8, color=color, thickness=2)
+        roi_gray = gray[y:y + h, x:x + w]
+        roi_color = frame[y:y + h, x:x + w]
+        # haar eyes
+        if not haarcascades_eye_detector is None:
+            eyes = haarcascades_eye_detector.detectMultiScale(roi_gray)
+            for (ex, ey, ew, eh) in eyes:
+                cv2.rectangle(roi_color, (ex, ey), (ex + ew, ey + eh), (0, 255, 0), 2)
+                cv2.putText(roi_color, 'eyes ', org=(ex - 10, ey - 10),
+                            fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=0.8, color=color, thickness=2)
 def main():
     # capture frames from a camera
     # cap = cv2.VideoCapture(args.src)
@@ -104,11 +142,13 @@ def main():
     fps.stop()
 
     # check camera is opened or not.
-    if ((cap.stream == None) or (not cap.stream.isOpened())):
+    if cap.stream == None or not cap.stream.isOpened():
         print('\n\n')
         print('Error - could not open video device.')
         print('\n\n')
         exit(0)
+
+    logging.info(f"backend API: {cap.stream.getBackendName()}")
 
     while cv2.waitKey(1) < 0 and fps._numFrames < float("inf"):
         # reads frames from a camera (cv2.VideoCapture)
@@ -131,34 +171,10 @@ def main():
         # rotated_frame = rotate_picture(frame)
         # frame_save_as_jpg(rotated_frame, fps)
 
-        # convert to gray scale of each frames
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
-        # Detects faces of different sizes in the input image
-        haarcascades_detector_faces = haarcascades_detector.detectMultiScale(gray, 1.3, 5)
-        mtcnn_face_detector_faces = mtcnn_face_detector.detect_faces(frame) # slower than haar and YOLO_V5
-
-        # # haar_cascade model
-        for haar in haarcascades_detector_faces:
-            (x, y, w, h) = haar
-            center = (int(x + w / 2), int(y + h / 2))
-            radius = int(max(w, h) / 2)
-            color = (255, 255, 0)
-            thickness = 8
-            cv2.circle(frame, center=center, radius=radius, color=color, thickness=thickness)
-            cv2.putText(frame, 'HAAR_CASCADE ', org=(center[0] - radius, center[1] - radius), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=0.8, color=color, thickness=2)
-            roi_gray = gray[y:y + h, x:x + w]
-            roi_color = frame[y:y + h, x:x + w]
-
+        # Haar Cascade
+        haarcascades_detect(haarcascades_detector, frame, haarcascades_eye_detector=None)
         # MTCNN model
-        for face_loc in mtcnn_face_detector_faces:
-            (x, y, w, h) = face_loc['box']
-            color = (0, 255, 0)
-            thickness = 2
-            cv2.rectangle(frame, (x, y), (x + w, y + h), color, 8)
-            cv2.putText(frame, 'MTCNN', (x, y - 10), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=0.8, color=color,
-                        thickness=thickness)
-
+        mtcnn_detect(mtcnn_face_detector, frame)
         # YOLO v5 model
         frame, bboxes = getFaceBox(faceNet, frame)
 
