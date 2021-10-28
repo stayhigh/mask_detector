@@ -25,45 +25,55 @@ def frame_save_as_jpg(frame, fps):
 
 MAX_FRAME_NUM = float("inf")
 def readfrom_webcam():
-    cap = WebcamVideoStream(src=0).start()
+    # cap = WebcamVideoStream(src=0).start()
+    cap = cv2.VideoCapture(0)
     fps = FPS().start()
     fps.stop()
 
     # check camera is opened or not.
-    if cap.stream is None or not cap.stream.isOpened():
+    if cap is None or not cap.isOpened():
         print('\n\n')
         print('Error - could not open video device.')
         print('\n\n')
         exit(0)
 
-    while True and fps._numFrames < MAX_FRAME_NUM:
-
+    while fps._numFrames < MAX_FRAME_NUM:
         # frame = cap.read()
-        # logger.info(f"grab: {cap.stream.grab()}")
-        if cap.stream.grab():
-            # logger.info(f"retrieve: {cap.stream.retrieve()}")
-            has_frame, frame = cap.stream.retrieve() # retrieve returns tuple type
+        # cap.stream.setExceptionMode(True)
+        print('try case')
+        grabbed = cap.grab()
+        logger.info(f"grabbed: {grabbed}")
+        if grabbed:
+            has_frame, frame = cap.retrieve() # retrieve returns tuple type
             if not has_frame:
-                logger.info(f"frame is empty")
+                logger.info(f"no frame: {has_frame} {frame}")
+                continue
+
+            if frame is None:
+                logger.info(f"frame empty: {has_frame} {frame}")
                 continue
 
             logger.info(f"type(frame): {type(frame)}")
             frame_save_as_jpg(frame, fps)
-
+            window_name = 'webcam'
+            cv2.imshow(window_name, frame)
+            cv2.setWindowProperty(window_name, cv2.WND_PROP_TOPMOST, 1)
+            cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
             # FPS info
             logger.info("approx. FPS/elasped_time/#frames: {:.2f}/{:.2f}/{}".format(fps.fps(), fps.elapsed(), fps._numFrames))
-
+            logger.info(f"cap: {cap is None}")
+        else:
+            cap.stream.retrieve()
         # update the FPS counter
         fps.update()
 
         # stop() method updates the _end attribute
         fps.stop()
 
-        # check if the key
-        # key = cv2.waitKey(1)
-        # if key < 0:
-        #     logger.info(f"key<0 : {key}")
-        #     break
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            logger.info("break")
+            break
+
 
     # De-allocate any associated memory usage
     cv2.destroyAllWindows()
