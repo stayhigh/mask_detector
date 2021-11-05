@@ -12,6 +12,8 @@ from imutils.video import WebcamVideoStream  # threaded version
 import imutils
 from imutils.video import FPS
 import logging
+import time
+import numpy as np
 
 # set logger
 logging.basicConfig(level=logging.DEBUG)
@@ -64,9 +66,13 @@ elif args.model == "dnn":
         faceNet.setPreferableBackend(cv2.dnn.DNN_BACKEND_CUDA)
         faceNet.setPreferableTarget(cv2.dnn.DNN_TARGET_CUDA)
         print("Using GPU device")
+elif args.model == "yolo":
+    yolo_net = cv2.dnn.readNetFromDarknet('./yolov3.cfg', './yolov3.weights')
+    # yolo_net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
+    yolo_net.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
 
 
-def  getFaceBox(net, frame, conf_threshold=0.7):
+def  dnn_getFaceBox(net, frame, conf_threshold=0.7):
     frameOpencvDnn = frame.copy()
     frameHeight = frameOpencvDnn.shape[0]
     frameWidth = frameOpencvDnn.shape[1]
@@ -88,6 +94,69 @@ def  getFaceBox(net, frame, conf_threshold=0.7):
                         cv2.LINE_AA)
     return frameOpencvDnn, bboxes
 
+
+def yolo_getBox(net, frame, conf_threshold=0.5):
+    """
+    https://opencv-tutorial.readthedocs.io/en/latest/yolo/yolo.html
+    :param net:
+    :param frame:
+    :param conf_threshold:
+    :return:
+    """
+    classes = open('coco.names').read().strip().split('\n')
+    np.random.seed(42)
+    colors = np.random.randint(0, 255, size=(len(classes), 3), dtype='uint8')
+    frameOpencvDnn = frame.copy()
+    frameHeight = frameOpencvDnn.shape[0]
+    frameWidth = frameOpencvDnn.shape[1]
+    ln = net.getLayerNames()
+    # print(len(ln), ln)
+    ln = [ln[i[0] - 1] for i in net.getUnconnectedOutLayers()]
+
+    # construct a blob from the image
+    blob = cv2.dnn.blobFromImage(frameOpencvDnn, 1 / 255.0, (416, 416), swapRB=True, crop=False)
+    padding = 10
+    r = blob[0, 0, :, :]
+    # text = f'Blob shape={blob.shape}'
+    # cv2.displayOverlay('blob', text)
+    cv2.imshow('blob', r)
+
+    net.setInput(blob)
+    t0 = time.time()
+    outputs = net.forward(ln)
+    t = time.time()
+
+    bboxes = []
+    confidences = []
+    classIDs = []
+    h, w = frameOpencvDnn.shape[:2]
+    for output in outputs:
+        for detection in output:
+            scores = detection[5:]
+            classID = np.argmax(scores)
+            confidence = scores[classID]
+            if confidence > conf_threshold:
+                box = detection[:4] * np.array([w, h, w, h])
+                (centerX, centerY, width, height) = box.astype("int")
+                x = int(centerX - (width / 2))
+                y = int(centerY - (height / 2))
+                box = [x, y, int(width), int(height)]
+                bboxes.append(box)
+                confidences.append(float(confidence))
+                classIDs.append(classID)
+
+    indices = cv2.dnn.NMSBoxes(bboxes, confidences, score_threshold=0.5, nms_threshold=0.4)
+    if len(indices) > 0:
+        for i in indices.flatten():
+            (x, y) = (bboxes[i][0], bboxes[i][1])
+            (w, h) = (bboxes[i][2], bboxes[i][3])
+            color = [int(c) for c in colors[classIDs[i]]]
+            cv2.rectangle(frameOpencvDnn, (x, y), (x + w, y + h), color, int(round(frameHeight / 150)), 8)
+            text = "{}: {:.4f}".format(classes[classIDs[i]], confidences[i])
+            cv2.putText(frameOpencvDnn, f'YOLO-{text}', (x, y - padding), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2,
+                        cv2.LINE_AA)
+
+    return frameOpencvDnn, bboxes
 
 def frame_save_as_jpg(frame, fps):
     resized_frame = imutils.resize(frame, width=400)
@@ -189,10 +258,12 @@ def main():
             # MTCNN model
             mtcnn_detect(mtcnn_face_detector, frame)
             # dnn model
-            frame, bboxes = getFaceBox(faceNet, frame)
+            frame, bboxes = dnn_getFaceBox(faceNet, frame)
         elif args.model == "dnn":
             # dnn model
-            frame, bboxes = getFaceBox(faceNet, frame)
+            frame, bboxes = dnn_getFaceBox(faceNet, frame)
+        elif args.model == 'yolo':
+            frame, bboxes = yolo_getBox(yolo_net, frame)
         elif args.model == 'none':
             pass
 
@@ -230,7 +301,8 @@ if __name__ == '__main__':
     # add function to be profiled
     lprofiler = LineProfiler()
     lprofiler.add_function(main)
-    lprofiler.add_function(getFaceBox)
+    lprofiler.add_function(dnn_getFaceBox)
+    lprofiler.add_function(yolo_getBox)
 
     # set wrapper
     lp_wrapper = lprofiler(main)
