@@ -68,8 +68,8 @@ elif args.model == "dnn":
         print("Using GPU device")
 elif args.model == "yolo":
     yolo_net = cv2.dnn.readNetFromDarknet('./yolov3.cfg', './yolov3.weights')
-    yolo_net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
-    # yolo_net.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
+    # yolo_net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
+    yolo_net.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
 
 
 def  dnn_getFaceBox(net, frame, conf_threshold=0.7):
@@ -125,8 +125,6 @@ def yolo_getBox(net, frame, conf_threshold=0.5):
     t0 = time.time()
     outputs = net.forward(ln)
     t = time.time()
-
-    print(f'forward propagation time={t - t0}')
 
     bboxes = []
     confidences = []
