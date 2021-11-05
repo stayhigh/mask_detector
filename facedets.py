@@ -14,6 +14,7 @@ from imutils.video import FPS
 import logging
 import time
 import numpy as np
+import math
 
 # set logger
 logging.basicConfig(level=logging.DEBUG)
@@ -125,7 +126,7 @@ def yolo_getBox(net, frame, conf_threshold=0.5):
     t0 = time.time()
     outputs = net.forward(ln)
     t = time.time()
-    
+
     # The forward propagation takes about 2 seconds on an MacAir 2012 (1,7 GHz Intel Core i5).
     # https://opencv-tutorial.readthedocs.io/en/latest/yolo/yolo.html
     print(f'forward propagation time={t - t0}')
@@ -155,8 +156,12 @@ def yolo_getBox(net, frame, conf_threshold=0.5):
             (x, y) = (bboxes[i][0], bboxes[i][1])
             (w, h) = (bboxes[i][2], bboxes[i][3])
             color = [int(c) for c in colors[classIDs[i]]]
-            cv2.rectangle(frameOpencvDnn, (x, y), (x + w, y + h), color, int(round(frameHeight / 150)), 8)
-            text = "{}: {:.4f}".format(classes[classIDs[i]], confidences[i])
+            thickness = math.ceil(10 * (confidences[i] - conf_threshold))
+            cv2.rectangle(frameOpencvDnn, (x, y), (x + w, y + h), color, thickness=thickness)
+            # cv2.rectangle(frameOpencvDnn, (x, y), (x + w, y + h), color, int(round(frameHeight / 150)), 8)
+            # cv2.rectangle(frameOpencvDnn, (x, y), (x + w, y + h), color, int(round(frameHeight / 150)),
+            #               thickness=8 * (1 + int(confidences[i])))
+            text = "{}: {:.4f} {:.1f}".format(classes[classIDs[i]], confidences[i], thickness)
             cv2.putText(frameOpencvDnn, f'YOLO-{text}', (x, y - padding), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2,
                         cv2.LINE_AA)
 
