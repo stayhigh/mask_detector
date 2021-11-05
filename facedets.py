@@ -156,7 +156,7 @@ def yolo_getBox(net, frame, conf_threshold=0.5):
             (x, y) = (bboxes[i][0], bboxes[i][1])
             (w, h) = (bboxes[i][2], bboxes[i][3])
             color = [int(c) for c in colors[classIDs[i]]]
-            thickness = math.ceil(10 * (confidences[i] - conf_threshold))
+            thickness = math.ceil(10 * (confidences[i] - conf_threshold) / conf_threshold)
             cv2.rectangle(frameOpencvDnn, (x, y), (x + w, y + h), color, thickness=thickness)
             # cv2.rectangle(frameOpencvDnn, (x, y), (x + w, y + h), color, int(round(frameHeight / 150)), 8)
             # cv2.rectangle(frameOpencvDnn, (x, y), (x + w, y + h), color, int(round(frameHeight / 150)),
