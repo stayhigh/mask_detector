@@ -24,7 +24,7 @@ parser.add_argument('--src', action='store', default=0, nargs='?', help='Set vid
 parser.add_argument('--w', action='store', default=320, nargs='?', help='Set video width')
 parser.add_argument('--h', action='store', default=240, nargs='?', help='Set video height')
 parser.add_argument("--device", default="cpu", help="Device to inference on")
-parser.add_argument("--allmodel", action='store_true', help="enable all models")
+parser.add_argument("--model", default="dnn", help="enable all models: all/dnn")
 args = parser.parse_args()
 
 
@@ -36,29 +36,35 @@ args = parser.parse_args()
 # from a lot of positive(faces) and negative(non-faces)
 # images.
 
-if args.allmodel:
-    # haarcascades, MTCNN, YOLOv5
+if args.model == "all":
+    # haarcascades, MTCNN, DNN
     haarcascades_detector = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
     haarcascades_eye_detector = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_eye.xml') # https://raw.githubusercontent.com/opencv/opencv/master/data/haarcascades/haarcascade_eye.xml
     mtcnn_face_detector = MTCNN()
-    ## YOLOv5
+    ## DNN
     faceProto = "/Users/johnwcwang/Desktop/codebase/learnopencv/AgeGender/opencv_face_detector.pbtxt"
     faceModel = "/Users/johnwcwang/Desktop/codebase/learnopencv/AgeGender/opencv_face_detector_uint8.pb"
     faceNet = cv2.dnn.readNet(faceModel, faceProto)
-else:
-    ## YOLOv5
+    if args.device == "cpu":
+        faceNet.setPreferableBackend(cv2.dnn.DNN_TARGET_CPU)
+        print("Using CPU device")
+    elif args.device == "gpu":
+        faceNet.setPreferableBackend(cv2.dnn.DNN_BACKEND_CUDA)
+        faceNet.setPreferableTarget(cv2.dnn.DNN_TARGET_CUDA)
+        print("Using GPU device")
+elif args.model == "dnn":
+    ## DNN
     faceProto = "/Users/johnwcwang/Desktop/codebase/learnopencv/AgeGender/opencv_face_detector.pbtxt"
     faceModel = "/Users/johnwcwang/Desktop/codebase/learnopencv/AgeGender/opencv_face_detector_uint8.pb"
     faceNet = cv2.dnn.readNet(faceModel, faceProto)
+    if args.device == "cpu":
+        faceNet.setPreferableBackend(cv2.dnn.DNN_TARGET_CPU)
+        print("Using CPU device")
+    elif args.device == "gpu":
+        faceNet.setPreferableBackend(cv2.dnn.DNN_BACKEND_CUDA)
+        faceNet.setPreferableTarget(cv2.dnn.DNN_TARGET_CUDA)
+        print("Using GPU device")
 
-
-if args.device == "cpu":
-    faceNet.setPreferableBackend(cv2.dnn.DNN_TARGET_CPU)
-    print("Using CPU device")
-elif args.device == "gpu":
-    faceNet.setPreferableBackend(cv2.dnn.DNN_BACKEND_CUDA)
-    faceNet.setPreferableTarget(cv2.dnn.DNN_TARGET_CUDA)
-    print("Using GPU device")
 
 def  getFaceBox(net, frame, conf_threshold=0.7):
     frameOpencvDnn = frame.copy()
@@ -78,7 +84,7 @@ def  getFaceBox(net, frame, conf_threshold=0.7):
             y2 = int(detections[0, 0, i, 6] * frameHeight)
             bboxes.append([x1, y1, x2, y2])
             cv2.rectangle(frameOpencvDnn, (x1, y1), (x2, y2), (0, 255, 255), int(round(frameHeight/150)), 8)
-            cv2.putText(frameOpencvDnn, 'YOLO_V5', (x1, y1 - padding), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2,
+            cv2.putText(frameOpencvDnn, 'DNN', (x1, y1 - padding), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2,
                         cv2.LINE_AA)
     return frameOpencvDnn, bboxes
 
@@ -102,7 +108,7 @@ def rotate_picture(image, width=400, height=400, angle=45, scale=1):
 
 def mtcnn_detect(mtcnn_face_detector, frame):
     # MTCNN model
-    mtcnn_face_detector_faces = mtcnn_face_detector.detect_faces(frame)  # slower than haar and YOLO_V5
+    mtcnn_face_detector_faces = mtcnn_face_detector.detect_faces(frame)  # slower than haar and DNN
     for face_loc in mtcnn_face_detector_faces:
         (x, y, w, h) = face_loc['box']
         color = (0, 255, 0)
@@ -177,14 +183,18 @@ def main():
         # rotated_frame = rotate_picture(frame)
         # frame_save_as_jpg(rotated_frame, fps)
 
-        if args.allmodel:
+        if args.model == "all":
             # Haar Cascade
             haarcascades_detect(haarcascades_detector, frame, haarcascades_eye_detector=None)
             # MTCNN model
             mtcnn_detect(mtcnn_face_detector, frame)
-        else:
-            # YOLO v5 model
+            # dnn model
             frame, bboxes = getFaceBox(faceNet, frame)
+        elif args.model == "dnn":
+            # dnn model
+            frame, bboxes = getFaceBox(faceNet, frame)
+        elif args.model == 'none':
+            pass
 
         # FPS info
         logger.info("approx. FPS/elasped_time/#frames: {:.2f}/{:.2f}/{}".format(fps.fps(), fps.elapsed(), fps._numFrames))
@@ -205,8 +215,8 @@ def main():
         cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
 
         # # Wait for Esc key to stop
-        # if cv2.waitKey(10) & 0xFF == 27:
-        #     break
+        if cv2.waitKey(1) & 0xFF == ord('q'): 
+            break
 
         # stop() method updates the _end attribute
         fps.stop()
@@ -220,6 +230,7 @@ if __name__ == '__main__':
     # add function to be profiled
     lprofiler = LineProfiler()
     lprofiler.add_function(main)
+    lprofiler.add_function(getFaceBox)
 
     # set wrapper
     lp_wrapper = lprofiler(main)
