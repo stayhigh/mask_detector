@@ -24,6 +24,7 @@ parser.add_argument('--src', action='store', default=0, nargs='?', help='Set vid
 parser.add_argument('--w', action='store', default=320, nargs='?', help='Set video width')
 parser.add_argument('--h', action='store', default=240, nargs='?', help='Set video height')
 parser.add_argument("--device", default="cpu", help="Device to inference on")
+parser.add_argument("--allmodel", action='store_true', help="enable all models")
 args = parser.parse_args()
 
 
@@ -35,15 +36,20 @@ args = parser.parse_args()
 # from a lot of positive(faces) and negative(non-faces)
 # images.
 
-# haarcascades, MTCNN, YOLOv5
-haarcascades_detector = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-haarcascades_eye_detector = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_eye.xml') # https://raw.githubusercontent.com/opencv/opencv/master/data/haarcascades/haarcascade_eye.xml
-mtcnn_face_detector = MTCNN()
-
-## YOLOv5
-faceProto = "/Users/johnwcwang/Desktop/codebase/learnopencv/AgeGender/opencv_face_detector.pbtxt"
-faceModel = "/Users/johnwcwang/Desktop/codebase/learnopencv/AgeGender/opencv_face_detector_uint8.pb"
-faceNet = cv2.dnn.readNet(faceModel, faceProto)
+if args.allmodel:
+    # haarcascades, MTCNN, YOLOv5
+    haarcascades_detector = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+    haarcascades_eye_detector = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_eye.xml') # https://raw.githubusercontent.com/opencv/opencv/master/data/haarcascades/haarcascade_eye.xml
+    mtcnn_face_detector = MTCNN()
+    ## YOLOv5
+    faceProto = "/Users/johnwcwang/Desktop/codebase/learnopencv/AgeGender/opencv_face_detector.pbtxt"
+    faceModel = "/Users/johnwcwang/Desktop/codebase/learnopencv/AgeGender/opencv_face_detector_uint8.pb"
+    faceNet = cv2.dnn.readNet(faceModel, faceProto)
+else:
+    ## YOLOv5
+    faceProto = "/Users/johnwcwang/Desktop/codebase/learnopencv/AgeGender/opencv_face_detector.pbtxt"
+    faceModel = "/Users/johnwcwang/Desktop/codebase/learnopencv/AgeGender/opencv_face_detector_uint8.pb"
+    faceNet = cv2.dnn.readNet(faceModel, faceProto)
 
 
 if args.device == "cpu":
@@ -171,12 +177,14 @@ def main():
         # rotated_frame = rotate_picture(frame)
         # frame_save_as_jpg(rotated_frame, fps)
 
-        # Haar Cascade
-        haarcascades_detect(haarcascades_detector, frame, haarcascades_eye_detector=None)
-        # MTCNN model
-        mtcnn_detect(mtcnn_face_detector, frame)
-        # YOLO v5 model
-        frame, bboxes = getFaceBox(faceNet, frame)
+        if args.allmodel:
+            # Haar Cascade
+            haarcascades_detect(haarcascades_detector, frame, haarcascades_eye_detector=None)
+            # MTCNN model
+            mtcnn_detect(mtcnn_face_detector, frame)
+        else:
+            # YOLO v5 model
+            frame, bboxes = getFaceBox(faceNet, frame)
 
         # FPS info
         logger.info("approx. FPS/elasped_time/#frames: {:.2f}/{:.2f}/{}".format(fps.fps(), fps.elapsed(), fps._numFrames))

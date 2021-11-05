@@ -26,7 +26,6 @@ args = vars(ap.parse_args())
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-# @profile
 def check_normal_fps():
     logger.info("[INFO] sampling frames from webcam...")
     stream = cv2.VideoCapture(0)
@@ -55,7 +54,6 @@ def check_normal_fps():
     cv2.destroyAllWindows()
     return fps.fps()
 
-# @profile
 def set_camera_resolution_for_normal_fps(camera, width=args['width'], height=args['height']):
     logger.info('setting video resolution:{:.0f}x{:.0f}'.format(width, height))
     camera.set(cv2.CAP_PROP_FRAME_WIDTH, width)
