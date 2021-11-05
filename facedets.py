@@ -125,6 +125,7 @@ def yolo_getBox(net, frame, conf_threshold=0.5):
     t0 = time.time()
     outputs = net.forward(ln)
     t = time.time()
+    print(f'forward propagation time={t - t0}')
 
     bboxes = []
     confidences = []
