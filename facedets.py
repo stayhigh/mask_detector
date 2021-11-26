@@ -20,16 +20,15 @@ import math
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-
 # parse arguments
 parser = argparse.ArgumentParser(description='OpenCV Face Detection')
 parser.add_argument('--src', action='store', default=0, nargs='?', help='Set video source; default is usb webcam')
 parser.add_argument('--w', action='store', default=320, nargs='?', help='Set video width')
 parser.add_argument('--h', action='store', default=240, nargs='?', help='Set video height')
+parser.add_argument("--inputvideo", type=str, default="", help="set input video")
 parser.add_argument("--device", default="cpu", help="Device to inference on")
 parser.add_argument("--model", default="dnn", help="enable all models: all/dnn")
 args = parser.parse_args()
-
 
 # load the required trained XML classifiers
 # https://github.com/Itseez/opencv/blob/master/
@@ -42,7 +41,8 @@ args = parser.parse_args()
 if args.model == "all":
     # haarcascades, MTCNN, DNN
     haarcascades_detector = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-    haarcascades_eye_detector = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_eye.xml') # https://raw.githubusercontent.com/opencv/opencv/master/data/haarcascades/haarcascade_eye.xml
+    haarcascades_eye_detector = cv2.CascadeClassifier(
+        cv2.data.haarcascades + 'haarcascade_eye.xml')  # https://raw.githubusercontent.com/opencv/opencv/master/data/haarcascades/haarcascade_eye.xml
     mtcnn_face_detector = MTCNN()
     ## DNN
     faceProto = "/Users/johnwcwang/Desktop/codebase/learnopencv/AgeGender/opencv_face_detector.pbtxt"
@@ -73,7 +73,7 @@ elif args.model == "yolo":
     yolo_net.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
 
 
-def  dnn_getFaceBox(net, frame, conf_threshold=0.7):
+def dnn_getFaceBox(net, frame, conf_threshold=0.7):
     frameOpencvDnn = frame.copy()
     frameHeight = frameOpencvDnn.shape[0]
     frameWidth = frameOpencvDnn.shape[1]
@@ -90,8 +90,8 @@ def  dnn_getFaceBox(net, frame, conf_threshold=0.7):
             x2 = int(detections[0, 0, i, 5] * frameWidth)
             y2 = int(detections[0, 0, i, 6] * frameHeight)
             bboxes.append([x1, y1, x2, y2])
-            cv2.rectangle(frameOpencvDnn, (x1, y1), (x2, y2), (0, 255, 255), int(round(frameHeight/150)), 8)
-            cv2.putText(frameOpencvDnn, 'DNN', (x1, y1 - padding), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2,
+            cv2.rectangle(frameOpencvDnn, (x1, y1), (x2, y2), (0, 255, 255), int(round(frameHeight / 150)), 8)
+            cv2.putText(frameOpencvDnn, 'YOLO', (x1, y1 - padding), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2,
                         cv2.LINE_AA)
     return frameOpencvDnn, bboxes
 
@@ -167,6 +167,7 @@ def yolo_getBox(net, frame, conf_threshold=0.5):
 
     return frameOpencvDnn, bboxes
 
+
 def frame_save_as_jpg(frame, fps):
     resized_frame = imutils.resize(frame, width=400)
     directory = os.path.join(os.path.dirname(__file__), './jpgs')
@@ -184,6 +185,7 @@ def rotate_picture(image, width=400, height=400, angle=45, scale=1):
     rotated_image = cv2.warpAffine(src=image, M=rotate_matrix, dsize=(width, height))
     return rotated_image
 
+
 def mtcnn_detect(mtcnn_face_detector, frame):
     # MTCNN model
     mtcnn_face_detector_faces = mtcnn_face_detector.detect_faces(frame)  # slower than haar and DNN
@@ -194,6 +196,7 @@ def mtcnn_detect(mtcnn_face_detector, frame):
         cv2.rectangle(frame, (x, y), (x + w, y + h), color, 8)
         cv2.putText(frame, 'MTCNN', (x, y - 10), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=0.8, color=color,
                     thickness=thickness)
+
 
 def haarcascades_detect(haarcascades_detector, frame, haarcascades_eye_detector=None):
     # convert to gray scale of each frames
@@ -221,13 +224,18 @@ def haarcascades_detect(haarcascades_detector, frame, haarcascades_eye_detector=
                 cv2.rectangle(roi_color, (ex, ey), (ex + ew, ey + eh), (0, 255, 0), 2)
                 cv2.putText(roi_color, 'eyes ', org=(ex - 10, ey - 10),
                             fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=0.8, color=color, thickness=2)
+
+
 def main():
     # capture frames from a camera
     # cap = cv2.VideoCapture(args.src)
+    logger.info(f"inputvideo:{args.inputvideo}")
+    if not args.inputvideo:
+        CAM_INDEX = args.src
+        cap = WebcamVideoStream(src=CAM_INDEX + cv2.CAP_ANY).start()
+    else:
+        cap = WebcamVideoStream(src=args.inputvideo).start()
 
-    CAM_INDEX = args.src
-    cap = WebcamVideoStream(src=CAM_INDEX + cv2.CAP_ANY).start()
-    # cap = WebcamVideoStream(src=args.src).start()
     fps = FPS().start()
     fps.stop()
 
@@ -237,6 +245,7 @@ def main():
         print('Error - could not open video device.')
         print('\n\n')
         exit(0)
+
 
     logging.info(f"backend API: {cap.stream.getBackendName()}")
 
@@ -255,7 +264,7 @@ def main():
         # check if the frame is empty
         if frame is None:
             logger.error(f"NO FRAME: frame type:{type(frame)}; frame repr: {repr(frame)}; _numFrames: {fps._numFrames}")
-            continue
+            break
 
         # save frame for debugging
         # rotated_frame = rotate_picture(frame)
@@ -268,21 +277,25 @@ def main():
             mtcnn_detect(mtcnn_face_detector, frame)
             # dnn model
             frame, bboxes = dnn_getFaceBox(faceNet, frame)
+        elif args.model == "haar":
+            haarcascades_detect(haarcascades_detector, frame, haarcascades_eye_detector=None)
+        elif args.model == "mtcnn":
+            mtcnn_detect(mtcnn_face_detector, frame)
         elif args.model == "dnn":
             # dnn model
             frame, bboxes = dnn_getFaceBox(faceNet, frame)
         elif args.model == 'yolo':
+            """yolo for coco.name object detection"""
             frame, bboxes = yolo_getBox(yolo_net, frame)
-        elif args.model == 'none':
-            pass
 
         # FPS info
-        logger.info("approx. FPS/elasped_time/#frames: {:.2f}/{:.2f}/{}".format(fps.fps(), fps.elapsed(), fps._numFrames))
+        logger.info(
+            "approx. FPS/elasped_time/#frames: {:.2f}/{:.2f}/{}".format(fps.fps(), fps.elapsed(), fps._numFrames))
         fps_info_xpadding = 20
         fps_info_ypadding = 20
         cv2.putText(frame,
                     f"FPS/elapsed time: {fps.fps():.4}/{fps.elapsed():.4}",
-                    (0+fps_info_xpadding, 0+fps_info_ypadding),
+                    (0 + fps_info_xpadding, 0 + fps_info_ypadding),
                     fontFace=cv2.FONT_HERSHEY_SIMPLEX,
                     fontScale=0.8,
                     color=(255, 0, 0),
@@ -295,18 +308,71 @@ def main():
         cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
 
         # # Wait for Esc key to stop
-        if cv2.waitKey(1) & 0xFF == ord('q'): 
+        if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
         # stop() method updates the _end attribute
         fps.stop()
 
-
     # De-allocate any associated memory usage
     cv2.destroyAllWindows()
 
 
+def test1():
+    import cv2
+    haarcascades_detector = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+    haarcascades_eye_detector = cv2.CascadeClassifier(
+        cv2.data.haarcascades + 'haarcascade_eye.xml')  # https://raw.githubusercontent.com/opencv/opencv/master/data/haarcascades/haarcascade_eye.xml
+    mtcnn_face_detector = MTCNN()
+    ## DNN
+    faceProto = "/Users/johnwcwang/Desktop/codebase/learnopencv/AgeGender/opencv_face_detector.pbtxt"
+    faceModel = "/Users/johnwcwang/Desktop/codebase/learnopencv/AgeGender/opencv_face_detector_uint8.pb"
+
+    # importing libraries
+    import cv2
+    import numpy as np
+
+    # Create a VideoCapture object and read from input file
+    cap = cv2.VideoCapture('ipman.mp4')
+
+    # Check if camera opened successfully
+    if (cap.isOpened() == False):
+        print("Error opening video file")
+
+    # Read until video is completed
+    while (cap.isOpened()):
+        # Capture frame-by-frame
+        ret, frame = cap.read()
+        if ret == True:
+            # Haar Cascade
+            # haarcascades_detect(haarcascades_detector, frame, haarcascades_eye_detector=None)
+            # MTCNN model
+            # mtcnn_detect(mtcnn_face_detector, frame)
+            # dnn model
+            # frame, bboxes = dnn_getFaceBox(faceNet, frame)
+            frame, bboxes = yolo_getBox(yolo_net, frame)
+
+            # Display the resulting frame
+            cv2.imshow('Frame', frame)
+
+            # Press Q on keyboard to exit
+            if cv2.waitKey(40) & 0xFF == ord('q'):
+                break
+
+        # Break the loop
+        else:
+            break
+
+    # When everything done, release
+    # the video capture object
+    cap.release()
+
+    # Closes all the frames
+    cv2.destroyAllWindows()
+
+
 if __name__ == '__main__':
+    # test1()
     # add function to be profiled
     lprofiler = LineProfiler()
     lprofiler.add_function(main)
