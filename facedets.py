@@ -15,7 +15,10 @@ import logging
 import time
 import numpy as np
 import math
+import time
 
+ENABLE_OUTPUT_VIDEO = True
+ENABLE_DISPLAY = True
 # set logger
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -26,9 +29,13 @@ parser.add_argument('--src', action='store', default=0, nargs='?', help='Set vid
 parser.add_argument('--w', action='store', default=320, nargs='?', help='Set video width')
 parser.add_argument('--h', action='store', default=240, nargs='?', help='Set video height')
 parser.add_argument("--inputvideo", type=str, default="", help="set input video")
+parser.add_argument("--nodisplay", action="store_true", default="", help="enable display")
 parser.add_argument("--device", default="cpu", help="Device to inference on")
-parser.add_argument("--model", default="dnn", help="enable all models: all/dnn")
+parser.add_argument("--model", required=True, default="dnn", help="enable all models: all/dnn")
 args = parser.parse_args()
+
+if args.nodisplay:
+    ENABLE_DISPLAY = False
 
 # load the required trained XML classifiers
 # https://github.com/Itseez/opencv/blob/master/
@@ -37,6 +44,7 @@ args = parser.parse_args()
 # object we want to detect a cascade function is trained
 # from a lot of positive(faces) and negative(non-faces)
 # images.
+
 
 if args.model == "all":
     # haarcascades, MTCNN, DNN
@@ -55,6 +63,12 @@ if args.model == "all":
         faceNet.setPreferableBackend(cv2.dnn.DNN_BACKEND_CUDA)
         faceNet.setPreferableTarget(cv2.dnn.DNN_TARGET_CUDA)
         print("Using GPU device")
+elif args.model == "haar":
+    haarcascades_detector = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+    haarcascades_eye_detector = cv2.CascadeClassifier(
+        cv2.data.haarcascades + 'haarcascade_eye.xml')  # https://raw.githubusercontent.com/opencv/opencv/master/data/haarcascades/haarcascade_eye.xml
+elif args.model == 'mtcnn':
+    mtcnn_face_detector = MTCNN()
 elif args.model == "dnn":
     ## DNN
     faceProto = "/Users/johnwcwang/Desktop/codebase/learnopencv/AgeGender/opencv_face_detector.pbtxt"
@@ -74,6 +88,7 @@ elif args.model == "yolo":
 
 
 def dnn_getFaceBox(net, frame, conf_threshold=0.7):
+    thickness = 2
     frameOpencvDnn = frame.copy()
     frameHeight = frameOpencvDnn.shape[0]
     frameWidth = frameOpencvDnn.shape[1]
@@ -90,9 +105,10 @@ def dnn_getFaceBox(net, frame, conf_threshold=0.7):
             x2 = int(detections[0, 0, i, 5] * frameWidth)
             y2 = int(detections[0, 0, i, 6] * frameHeight)
             bboxes.append([x1, y1, x2, y2])
-            cv2.rectangle(frameOpencvDnn, (x1, y1), (x2, y2), (0, 255, 255), int(round(frameHeight / 150)), 8)
-            cv2.putText(frameOpencvDnn, 'YOLO', (x1, y1 - padding), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2,
-                        cv2.LINE_AA)
+            # cv2.rectangle(frameOpencvDnn, (x1, y1), (x2, y2), (0, 255, 255), int(round(frameHeight / 150)), 2)
+            cv2.rectangle(frameOpencvDnn, (x1, y1), (x2, y2), (0, 255, 255), thickness=thickness, lineType=2)
+            cv2.putText(frameOpencvDnn, 'DNN', (x1, y1 - padding), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255),
+                        thickness=thickness, lineType=cv2.LINE_AA)
     return frameOpencvDnn, bboxes
 
 
@@ -120,7 +136,8 @@ def yolo_getBox(net, frame, conf_threshold=0.5):
     r = blob[0, 0, :, :]
     # text = f'Blob shape={blob.shape}'
     # cv2.displayOverlay('blob', text)
-    cv2.imshow('blob', r)
+    if ENABLE_DISPLAY:
+        cv2.imshow('blob', r)
 
     net.setInput(blob)
     t0 = time.time()
@@ -156,12 +173,12 @@ def yolo_getBox(net, frame, conf_threshold=0.5):
             (x, y) = (bboxes[i][0], bboxes[i][1])
             (w, h) = (bboxes[i][2], bboxes[i][3])
             color = [int(c) for c in colors[classIDs[i]]]
-            thickness = math.ceil(10 * (confidences[i] - conf_threshold) / conf_threshold)
-            cv2.rectangle(frameOpencvDnn, (x, y), (x + w, y + h), color, thickness=thickness)
+            # thickness = math.ceil(10 * (confidences[i] - conf_threshold) / conf_threshold)
+            cv2.rectangle(frameOpencvDnn, (x, y), (x + w, y + h), color, thickness=1)
             # cv2.rectangle(frameOpencvDnn, (x, y), (x + w, y + h), color, int(round(frameHeight / 150)), 8)
             # cv2.rectangle(frameOpencvDnn, (x, y), (x + w, y + h), color, int(round(frameHeight / 150)),
             #               thickness=8 * (1 + int(confidences[i])))
-            text = "{}: {:.4f} {:.1f}".format(classes[classIDs[i]], confidences[i], thickness)
+            text = "{}: {:.3f}".format(classes[classIDs[i]], confidences[i])
             cv2.putText(frameOpencvDnn, f'YOLO-{text}', (x, y - padding), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2,
                         cv2.LINE_AA)
 
@@ -188,17 +205,18 @@ def rotate_picture(image, width=400, height=400, angle=45, scale=1):
 
 def mtcnn_detect(mtcnn_face_detector, frame):
     # MTCNN model
+    thickness = 2
     mtcnn_face_detector_faces = mtcnn_face_detector.detect_faces(frame)  # slower than haar and DNN
     for face_loc in mtcnn_face_detector_faces:
         (x, y, w, h) = face_loc['box']
         color = (0, 255, 0)
-        thickness = 2
-        cv2.rectangle(frame, (x, y), (x + w, y + h), color, 8)
+        cv2.rectangle(frame, (x, y), (x + w, y + h), color, thickness=thickness)
         cv2.putText(frame, 'MTCNN', (x, y - 10), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=0.8, color=color,
                     thickness=thickness)
 
 
 def haarcascades_detect(haarcascades_detector, frame, haarcascades_eye_detector=None):
+    thickness = 2
     # convert to gray scale of each frames
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
@@ -211,10 +229,10 @@ def haarcascades_detect(haarcascades_detector, frame, haarcascades_eye_detector=
         center = (int(x + w / 2), int(y + h / 2))
         radius = int(max(w, h) / 2)
         color = (255, 255, 0)
-        thickness = 8
+
         cv2.circle(frame, center=center, radius=radius, color=color, thickness=thickness)
         cv2.putText(frame, 'HAAR_CASCADE ', org=(center[0] - radius, center[1] - radius),
-                    fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=0.8, color=color, thickness=2)
+                    fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=0.8, color=color, thickness=thickness)
         roi_gray = gray[y:y + h, x:x + w]
         roi_color = frame[y:y + h, x:x + w]
         # haar eyes
@@ -223,31 +241,49 @@ def haarcascades_detect(haarcascades_detector, frame, haarcascades_eye_detector=
             for (ex, ey, ew, eh) in eyes:
                 cv2.rectangle(roi_color, (ex, ey), (ex + ew, ey + eh), (0, 255, 0), 2)
                 cv2.putText(roi_color, 'eyes ', org=(ex - 10, ey - 10),
-                            fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=0.8, color=color, thickness=2)
+                            fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=0.8, color=color, thickness=1)
 
 
 def main():
     # capture frames from a camera
-    # cap = cv2.VideoCapture(args.src)
     logger.info(f"inputvideo:{args.inputvideo}")
     if not args.inputvideo:
         CAM_INDEX = args.src
-        cap = WebcamVideoStream(src=CAM_INDEX + cv2.CAP_ANY).start()
+        logging.info(f"{CAM_INDEX} {cv2.CAP_ANY}")
+        #cap = WebcamVideoStream(src=CAM_INDEX + cv2.CAP_ANY).start()
+        cap = cv2.VideoCapture(CAM_INDEX + cv2.CAP_ANY)
+        # check camera is opened or not.
+        if cap == None or not cap.isOpened():
+            logger.error('\n\nError - could not open video device.\n\n')
+            exit(0)
+        logging.info(f"backend API: {cap.getBackendName()}")
     else:
-        cap = WebcamVideoStream(src=args.inputvideo).start()
+        # cap = WebcamVideoStream(src=args.inputvideo).start()
+        cap = cv2.VideoCapture(args.inputvideo)
+        # check camera is opened or not.
+        if cap == None or not cap.isOpened():
+            logger.error('\n\nError - could not open video device.\n\n')
+            exit(0)
+        logging.info(f"backend API: {cap.getBackendName()}")
 
     fps = FPS().start()
     fps.stop()
 
-    # check camera is opened or not.
-    if cap.stream == None or not cap.stream.isOpened():
-        print('\n\n')
-        print('Error - could not open video device.')
-        print('\n\n')
-        exit(0)
+    # enable video writer
+    frame_width = int(cap.get(3))
+    frame_height = int(cap.get(4))
+    size = (frame_width, frame_height)
 
-
-    logging.info(f"backend API: {cap.stream.getBackendName()}")
+    if ENABLE_OUTPUT_VIDEO:
+        if not args.inputvideo:
+            outputfilename = "webcam"
+        else:
+            outputfilename = args.inputvideo
+        ts = int(time.time())
+        output_video = cv2.VideoWriter(f'output_{outputfilename}_{ts}.avi', cv2.VideoWriter_fourcc(*'MJPG'), 10, size)
+        if not output_video.isOpened():
+            logger.warning(f"VideoWriter is not opened.")
+            sys.exit(-1)
 
     while cv2.waitKey(1) < 0 and fps._numFrames < float("inf"):
         # reads frames from a camera (cv2.VideoCapture)
@@ -255,9 +291,11 @@ def main():
         # if not hasFrame:
         #     cv2.waitKey()
         #     break
+        ret, frame = cap.read()
 
-        frame = cap.read()
-
+        if not ret:
+            logger.warning(f"ret error on #frame {fps._numFrames}")
+            continue
         # update the FPS counter
         fps.update()
 
@@ -303,9 +341,14 @@ def main():
 
         # Display an image in a window
         window_name = 'opencv face detection'
-        cv2.imshow(window_name, frame)
-        cv2.setWindowProperty(window_name, cv2.WND_PROP_TOPMOST, 1)
-        cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+        if ENABLE_DISPLAY:
+            cv2.imshow(window_name, frame)
+            cv2.setWindowProperty(window_name, cv2.WND_PROP_TOPMOST, 1)
+            cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+
+        # output video
+        if ENABLE_OUTPUT_VIDEO:
+            output_video.write(frame)
 
         # # Wait for Esc key to stop
         if cv2.waitKey(1) & 0xFF == ord('q'):
@@ -313,6 +356,9 @@ def main():
 
         # stop() method updates the _end attribute
         fps.stop()
+
+    # release the video
+    output_video.release()
 
     # De-allocate any associated memory usage
     cv2.destroyAllWindows()
@@ -356,7 +402,7 @@ def test1():
             cv2.imshow('Frame', frame)
 
             # Press Q on keyboard to exit
-            if cv2.waitKey(40) & 0xFF == ord('q'):
+            if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
 
         # Break the loop
@@ -372,7 +418,6 @@ def test1():
 
 
 if __name__ == '__main__':
-    # test1()
     # add function to be profiled
     lprofiler = LineProfiler()
     lprofiler.add_function(main)
